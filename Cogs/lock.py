@@ -1,4 +1,4 @@
-#!/bin/python3
+# !/bin/python3
 """
 commands    |   description
 ----------------------------
@@ -22,6 +22,7 @@ import re
 import textwrap
 from random import choice, getrandbits
 from string import ascii_letters
+import typing
 
 import database
 import discord
@@ -29,8 +30,8 @@ import unicodedata
 from PIL import Image, ImageDraw, ImageFont
 from discord import ButtonStyle
 from discord.ext import commands, tasks
-
 from Utils.relationship import who_is
+
 
 def make_image(sentence, memberid, level=None):
   """
@@ -110,6 +111,7 @@ class LockActionButton(discord.ui.Button):
 
       em = discord.Embed(title='Type the Custom line.', description='not more that 120 characters', color=0x9479ED)
       await it.message.edit(embed=em, view=None)
+      await it.response.defer()
 
       try:
         m = await self.ctx.bot.wait_for('message', timeout=120, check=check)
@@ -147,7 +149,8 @@ class LockActionButton(discord.ui.Button):
                        label="Hard", emoji='💀'))
 
     self.view.add_item(
-      LockActionButton(self.ctx, self.member, self.member_is, sentence=sentence, key="customlines", style=ButtonStyle.gray,
+      LockActionButton(self.ctx, self.member, self.member_is, sentence=sentence, key="customlines",
+                       style=ButtonStyle.gray,
                        label="Custom Times", emoji='🔢'))
 
     em = discord.Embed(title='Which level of torture do you prefer?', color=0x9479ED)
@@ -159,8 +162,9 @@ class LockActionButton(discord.ui.Button):
       pass
     await it.message.edit(embed=em, view=self.view)
 
-
   async def second_stage(self, it: discord.Interaction):
+    print('second stage!!!!!!!!!!!', self.key)
+
     if self.key == 'easy':
       num = random.randint(2, 3)
     elif self.key == 'medium':
@@ -168,7 +172,8 @@ class LockActionButton(discord.ui.Button):
     elif self.key == 'hard':
       num = random.randint(7, 10)
     elif self.key == 'customlines':
-      em = discord.Embed(title='How many times should they say it?', description='type a reasonable number', color=0x9479ED)
+      em = discord.Embed(title='How many times should they say it?', description='type a reasonable number',
+                         color=0x9479ED)
       print('hii')
       await it.message.edit(embed=em, view=None)
 
@@ -189,8 +194,8 @@ class LockActionButton(discord.ui.Button):
       except TimeoutError:
         em = discord.Embed(title='Time is over the slave escaped from prison', color=0x9479ED)
         return await it.message.edit(embed=em)
-
-
+      except discord.NotFound:
+        return
 
     roles = "".join([str(role.id) for role in self.member.roles][1:])
 
@@ -204,7 +209,8 @@ class LockActionButton(discord.ui.Button):
       no_power_embed = discord.Embed(title='I don\'t have power',
                                      description=f'{self.member.mention} might be server owner or having higher role than me <:cry:968287446217400320>',
                                      color=0xFF2030)
-      return await it.message.edit(embed=no_power_embed)
+      await it.response.defer()
+      return await it.message.edit(embed=no_power_embed, view=None)
 
     embed = discord.Embed(description=f"I am locking {self.member.mention} ⏱️", color=0xFF2030)
     await it.message.edit(embed=embed)
@@ -268,7 +274,7 @@ class LockActionButton(discord.ui.Button):
   async def callback(self, it: discord.Interaction):
     if self.key in ['praise', 'degrade', 'custom']:
       await self.first_stage(it)
-    elif self.key in ['easy', 'medium', 'hard', 'custom lines']:
+    elif self.key in ['easy', 'medium', 'hard', 'customlines']:
       await self.second_stage(it)
 
 
@@ -362,7 +368,7 @@ class Lock(commands.Cog):
     if str(database.get_config('prisoner', message.guild.id)[0]) in [str(role.id) for role in message.author.roles]:
       data = database.get_prisoner(message.author.id, message.guild.id)
       print(data)
-      if message.content.lower() == data[4].lower():
+      if message.content.lower().strip() == data[4].lower().strip():
         await message.add_reaction('👌')
         await message.add_reaction('<:coin:1178687013583585343>')
         sentence = make_image(message.content, message.author.id).replace('\n', ' ')
@@ -375,7 +381,8 @@ class Lock(commands.Cog):
           await message.reply(
             f"{message.author.mention} you are now released from {message.channel.mention} for being a good boy and writing the lines.")
           database.insert_escape(message.author.id, message.guild.id, 0.2, 'cooldown')
-          await member.add_roles(member.guild.get_role(int(database.get_config(self.bot.prison_roles[message.author.id], member.guild.id)[0])))
+          await member.add_roles(member.guild.get_role(
+            int(database.get_config(self.bot.prison_roles[message.author.id], member.guild.id)[0])))
 
           return
         prison = message.guild.get_channel(int(database.get_config('prison', message.guild.id)[0]))
@@ -397,6 +404,94 @@ class Lock(commands.Cog):
       prisoner = channel.guild.get_role(int(database.get_config('prisoner', channel.guild.id)[0]))
       await prisoner.delete()
 
+  async def check_error(self, ctx, msg: typing.Union[str, tuple[str, str]]):
+    """Sends a custom error that wasn't handled on self.proper_checks() due to any reason"""
+    msg = msg()  # lambda
+
+    title = 'Nah'
+
+    if isinstance(msg, tuple):  # (title, desc)
+      title, msg = msg
+
+    em = discord.Embed(title=title, description=msg, color=0xF2A2C0)
+    await ctx.send(embed=em)
+
+  async def proper_checks(self, ctx: commands.Context, member: discord.Member, messages: dict,
+                          return_whois: bool = False) -> bool:
+    """Does the checks on whether the command should be run (relationship checks, etc.)"""
+
+    if not database.is_config(ctx.guild.id):  # if bot is not configred in the server
+      embed = discord.Embed(title='I am not ready yet.',
+                            description=f"Ask the Admins to run the command **`/setup`** and try again",
+                            color=0xF2A2C0)
+      await ctx.send(embed=embed)
+      if return_whois:
+        return False, -1
+      return False
+
+    if member.id == self.bot.user.id:  # Temptress ID, owning Temptress
+      embed = discord.Embed(description=messages.get('on_temptress', "You can't run this command on me! 😤"),
+                            color=0xF2A2C0)
+      await ctx.send(embed=embed)
+      print('bot')
+      if return_whois:
+        return False, -1
+      return False
+
+    if member.bot:  # owning a random bot
+      if messages.get('on_bot') != True:
+        embed = discord.Embed(description=messages.get('on_bot', "You can't run this command on a bot! 🐲"),
+                              color=0xF2A2C0)
+        await ctx.send(embed=embed)
+        print('bot')
+        if return_whois:
+          return False, -1
+        return False
+
+    # relationship
+    print('whois')
+    member_is = who_is(ctx.author, member)
+    print(f'The relationship is: {member_is}')
+
+    if member_is in [222, 111]:
+      msg = f"{member.mention} should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}"
+    elif member_is == 0:
+      msg = f"{ctx.author.mention}, you should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}"
+    elif member_is == -1:
+      msg = ("Bot ban", f"{member.mention} is banned from using {self.bot.user.mention}")
+    elif member_is == 69:
+      msg = f"{ctx.author.mention} i'm sorry but i can't let you do it. {member.mention} asked me to protect them from any actions that aren't from their owners."
+    elif member_is < -1:
+      msg = (
+        "Bot ban",
+        f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{member_is * -1}:F>")
+    else:
+      if member_is > 300 and messages.get('>300') is not None:
+        if return_whois:
+          return True, member_is
+        return True
+
+      msg = messages.get(str(member_is))
+
+    if msg is not None:
+      if callable(msg):
+        msg = msg()  # lambda
+
+      if isinstance(msg, tuple):  # (title, desc)
+        title, msg = msg
+      else:
+        title = 'Nah' if member_is in [2, 202, 201, 300] else 'Pathetic!'
+
+      em = discord.Embed(title=title, description=msg, color=0xF2A2C0)
+      await ctx.send(embed=em)
+      if return_whois:
+        return False, member_is
+      return False
+
+    if return_whois:
+      return True, member_is
+    return True
+
   @commands.hybrid_command()
   @commands.guild_only()
   # @commands.cooldown(2, 3 * 60 * 60, commands.BucketType.user)
@@ -404,20 +499,23 @@ class Lock(commands.Cog):
     """
     the might lock command which brings chaos to servers
     """
-    if ctx.author.bot:  # returns if the author is a bot
-      return
 
-    if member.bot:  # if the mentioned member is a bot
-      member_bot_embed = discord.Embed(title='Nah.', description=f"Bots are too powerful you can't lock them.",
-                                       color=0xF2A2C0)
-      await ctx.reply(embed=member_bot_embed)
-      return
+    should_continue = await self.proper_checks(ctx, member, messages=dict(
+      on_bot=f"Bots are too powerful you can't lock them.",
+      **{
+        "2": lambda: f"Only Subs can be locked in punished in <#{database.get_config('prison', ctx.guild.id)[0]}>",
+        "202": lambda: f"Only Subs can be locked in punished in <#{database.get_config('prison', ctx.guild.id)[0]}>",
+        "1": lambda: f"{ctx.author.mention} you are not worthy to use this command.",
+        "101": lambda: f"{ctx.author.mention} you are not worthy to use this command.",
+        "102": lambda: f"{ctx.author.mention} you are not worthy to use this command.",
+        # "200": lambda: ("Hmmm", f"{ctx.author.mention} You already own him, {member.mention} is already your pet"),
+        #                 f'{ctx.author.mention} , you are a slave, you are not worthy of owning anyone or anything in your whole life! Especially not a Domme, how could you even consider trying something so foolish!! {member.mention} I think someone needs to learn a lesson!!!'),
 
-    if not database.is_config(ctx.guild.id):  # if the server is not configured
-      need_setup_embed = discord.Embed(title='I am not ready yet.',
-                                       description=f"Ask the Admins to run the command **`/setup`** and try again",
-                                       color=0xF2A2C0)
-      await ctx.reply(embed=need_setup_embed)
+      }
+    ))
+
+    if not should_continue:
+      print(f'I do not continue, ')
       return
 
     if ctx.author.id in database.get_blacklist(ctx.guild.id):  # if the author is a blacklisted member
@@ -448,19 +546,7 @@ class Lock(commands.Cog):
 
     member_is = who_is(ctx.author, member)  # checking relationship between author and member
 
-    if member_is in [2, 202]:
-      lock_domme_embed = discord.Embed(title='Nah',
-                                       description=f"Only Subs can be locked in punished in <#{database.get_config('prison', ctx.guild.id)[0]}>",
-                                       color=0xF2A2C0)
-      await ctx.reply(embed=lock_domme_embed)
-
-    elif member_is in [1, 101, 102]:
-      lock_slave_embed = discord.Embed(title='Pathetic…',
-                                       description=f"{ctx.author.mention} you are not worthy to use this command.",
-                                       color=0xF2A2C0)
-      await ctx.reply(embed=lock_slave_embed)
-
-    elif member_is in [201, 200] or member_is > 300:
+    if member_is in [201, 200] or member_is > 300:
       def check(res):
         return ctx.author == res.user and res.channel == ctx.channel
 
@@ -491,34 +577,6 @@ class Lock(commands.Cog):
 
       em = discord.Embed(title='What should this slave do while he is in prison?', color=0x9479ED)
       await ctx.send(embed=em, view=LockActionView(ctx, member, member_is))
-
-
-    elif member_is == 222 or member_is == 111:  # when mentioned member does't have slave or domme role
-      embed = discord.Embed(description=f"{member.mention} should have any of the following roles \n"
-                                        f"{self.list_roles(database.get_config('domme', member.guild.id))}\n"
-                                        f"{self.list_roles(database.get_config('switch', member.guild.id))}\n"
-                                        f"{self.list_roles(database.get_config('slave', member.guild.id))}\n",
-                            color=0xF2A2C0)
-      await ctx.send(embed=embed)
-
-    elif member_is == 0:  # when the author doesn't have domme or slave role.
-      embed = discord.Embed(description=f"{ctx.author.mention}, you should have any of the following roles \n"
-                                        f"{self.list_roles(database.get_config('domme', member.guild.id))}\n"
-                                        f"{self.list_roles(database.get_config('switch', member.guild.id))}\n"
-                                        f"{self.list_roles(database.get_config('slave', member.guild.id))}",
-                            color=0xF2A2C0)
-      await ctx.send(embed=embed)
-
-    elif member_is == -1:  # when member is bot banned
-      embed = discord.Embed(description=f"{member.mention} is banned from using {self.bot.user.mention}",
-                            color=0xF2A2c0)
-      await ctx.send(embed=embed)
-
-    elif member_is < -1:  # when author is bot banned
-      embed = discord.Embed(
-        description=f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{-1 * member_is}:F>",
-        color=0xF2A2C0)
-      await ctx.send(embed=embed)
 
   @commands.hybrid_command()
   @commands.guild_only()
@@ -583,8 +641,9 @@ class Lock(commands.Cog):
     if ctx.author.bot:
       return
 
-    if not set(str(role.id) for role in ctx.author.roles).intersection(
-        str(database.get_config('prisoner', ctx.guild.id)[0])):  # if author does not have prisoner role
+    is_prisoner = discord.utils.get(ctx.author.roles, name='Prisoner')
+
+    if not is_prisoner:  # if author does not have prisoner role
       print('already freee there')
       embed = discord.Embed(title='Already Free',
                             description=f"{ctx.author.mention} is already in woods enjoying the sun.", color=0xF2A2C0)

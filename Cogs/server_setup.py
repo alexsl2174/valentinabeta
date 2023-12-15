@@ -112,7 +112,7 @@ class ServerConfig(commands.Cog):
       try:
         resp: discord.Message = await self.bot.wait_for('message', timeout=90, check=check)
       except asyncio.TimeoutError:
-        return await m.edit(embed=setup_embed_timeout)
+        return await m.edit(embed=embeds['setup_embed_timeout'])
 
       if stage == 'reactionroles_channel':
         channel = resp.channel_mentions
@@ -175,7 +175,7 @@ class ServerConfig(commands.Cog):
         roles = resp.role_mentions
 
         if not roles:
-          await m.send(embed=embeds['setup_embed_fail'])
+          await m.edit(embed=embeds['setup_embed_fail'])
           return
 
         database.insert_config(stage, it.guild.id, ",".join(map(str, resp.raw_role_mentions)))
@@ -309,6 +309,30 @@ class ServerConfig(commands.Cog):
         description=f"Only Members with the following roles can chat with me:\n{self.list_roles(database.get_config('chat', ctx.guild.id))}",
         color=0xF2A2C0)
       await ctx.reply(embed=sucess_embed)
+
+  @commands.hybrid_command()
+  @commands.has_permissions(administrator=True)
+  @commands.guild_only()
+  async def gaglog(self, ctx, channel: discord.TextChannel = None):
+    """
+    This will set the channel where the bot will log the original gag messages.
+    """
+    channel = channel or ctx.channel
+
+    database.insert_config('gaglog', ctx.guild.id, channel.id)
+    await ctx.reply(f"<:yes:1184312448912732180> **{channel.mention}** is now the gag log channel.")
+
+  @commands.hybrid_command()
+  @commands.has_permissions(administrator=True)
+  @commands.guild_only()
+  async def safelog(self, ctx, channel: discord.TextChannel = None):
+    """
+    This will set the channel where the bot will log the safeword actions by users.
+    """
+    channel = channel or ctx.channel
+
+    database.insert_config('safelog', ctx.guild.id, channel.id)
+    await ctx.reply(f"<:yes:1184312448912732180> **{channel.mention}** is now the safeword log channel.")
 
   @commands.hybrid_command()
   @commands.has_permissions(administrator=True)

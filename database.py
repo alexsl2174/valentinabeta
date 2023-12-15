@@ -28,6 +28,9 @@ def get_delayed_time(delay):
 
 
 with con:
+  cur.execute("""CREATE TABLE IF NOT EXISTS user_configs
+    (user_id bigint, guild_id bigint, config text, VALUE text)""")
+
   cur.execute("""CREATE TABLE IF NOT EXISTS Config
         (NAME text, guildid bigint, VALUE text)""")
 
@@ -100,6 +103,38 @@ def get_config(name, guild):
   except IndexError:
     return [0]
 
+
+def get_user_config(name, user, guild, is_boolean=False):
+  cur.execute("SELECT value FROM user_configs WHERE config = %s AND user_id = %s AND guild_id = %s",
+              (name, user, guild))
+
+
+  value = []
+
+  try:
+    data = cur.fetchall()[0][0]
+    print('get_user_config', data, name)
+    if is_boolean:
+      return data == 'yes'
+    return data
+  except IndexError:
+    return None
+
+
+def set_user_config(name, user, guild, value):
+  value = str(value) if not isinstance(value, bool) else 'yes' if value else 'no'
+
+  with con:
+    # exists? if not insert otherwise update
+    cur.execute("SELECT value FROM user_configs WHERE config = %s AND user_id = %s AND guild_id = %s",
+                (name, user, guild))
+    data = cur.fetchall()
+    if data:
+      cur.execute("UPDATE user_configs SET value = %s WHERE config = %s AND user_id = %s AND guild_id = %s",
+                  (value, name, user, guild))
+    else:
+      cur.execute("INSERT INTO user_configs (user_id, guild_id, config, value) VALUES (%s, %s, %s, %s)",
+                  (user, guild, name, value))
 
 
 def get_config_raw(name, guild):
@@ -429,8 +464,7 @@ def insert_remove_blacklist(member, guild):
 
 def insert_escape(member, guild, safe_time, type):
   with con:    cur.execute("INSERT INTO Escape (memberid, guildid, timeint, type) VALUES (%s, %s, %s, %s)",
-                (member, guild, int(str(time() + (safe_time * 60 * 60))[:10]), type))
-
+                           (member, guild, int(str(time() + (safe_time * 60 * 60))[:10]), type))
 
 
 def is_escaped(member, guild):

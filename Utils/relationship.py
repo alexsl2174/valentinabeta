@@ -1,5 +1,14 @@
 import database
 
+def roleplay_role(member):
+  domme = database.get_config('domme', member.guild.id)[0]
+  sub = database.get_config('slave', member.guild.id)[0]
+  switch = database.get_config('switch', member.guild.id)[0]
+
+  member_has_role = lambda rid: str(rid) in [str(role.id) for role in member.roles]
+
+  return 'domme' if member_has_role(domme) else 'sub' if member_has_role(sub) else 'switch' if member_has_role(switch) else None
+
 def who_is(author, member):
   """
   returns int depends on relationship between author and member.
@@ -31,6 +40,8 @@ def who_is(author, member):
   -1      member is bot banned
 
   <-1     unixtime till author is banned
+
+  69      member is protected and its not their owner
   """
   member_has_role = lambda rid: str(rid) in [str(role.id) for role in member.roles]
   author_has_role = lambda rid: str(rid) in [str(role.id) for role in author.roles]
@@ -38,6 +49,9 @@ def who_is(author, member):
   domme = database.get_config('domme', member.guild.id)[0]
   sub = database.get_config('slave', member.guild.id)[0]
   switch = database.get_config('switch', member.guild.id)[0]
+
+  is_protected = database.get_user_config('protection', member.id, member.guild.id, is_boolean=True)
+  print(f'{is_protected=}')
 
   print(f"""{author_has_role(domme)=} | {author_has_role(sub)=} | {author_has_role(switch)=}
   {member_has_role(domme)=} | {member_has_role(sub)=} | {member_has_role(switch)=}""")
@@ -63,12 +77,18 @@ def who_is(author, member):
     if member_has_role(sub) or member_has_role(switch):
       ownerid = database.get_owner(member.id, member.guild.id)
 
-      if ownerid == 0:
+      if ownerid == 0 or not ownerid:
+        if is_protected:
+          return 69
+
         return 201  # member is unowned by author
 
       if author.id in ownerid:
         return 200  # member is owned by author
       else:
+        if is_protected:
+          return 69
+
         return 301  # member is owned by someone else
 
     return 222  #/ member has no controlling roles slave/switch/domme and author has domme/switch

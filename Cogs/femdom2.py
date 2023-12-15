@@ -1,13 +1,28 @@
 #!/bin/python3
 import asyncio
+import typing
 
 import database
 import discord
 from discord import ButtonStyle
 from discord.ext import commands
 from Cogs.femdom import YesNoView
+from Utils.relationship import who_is, roleplay_role
 
-from Utils.relationship import who_is
+
+def general_checks(check_setup=True):
+  async def predicate(ctx):
+    if check_setup:
+      if not database.is_config(ctx.guild.id):  # if bot is not configred in the server
+        embed = discord.Embed(title='I am not ready yet.',
+                              description=f"Ask the Admins to run the command **`/setup`** and try again",
+                              color=0xF2A2C0)
+        await ctx.send(embed=embed)
+        return False
+
+    return True
+
+  return commands.check(predicate)
 
 
 class BlindButton(discord.ui.Button):
@@ -112,7 +127,7 @@ class ChastityView(discord.ui.View):
     )
 
     self.add_item(
-      ChastityButton(style=ButtonStyle.green, label='Chastity Unlock', emoji='🔓', key='unlock', disabled= dsbl,
+      ChastityButton(style=ButtonStyle.green, label='Chastity Unlock', emoji='🔓', key='unlock', disabled=dsbl,
                      ctx=ctx,
                      member=member, action=action),
     )
@@ -157,12 +172,13 @@ class MuffsView(discord.ui.View):
     dsbl = database.get_slave_from_DB(member.id, ctx.guild.id)[0][7]
 
     self.add_item(
-      MuffsButton(style=ButtonStyle.green, label='Give Ear Muffs', key='give', disabled=not dsbl, ctx=ctx, member=member,
+      MuffsButton(style=ButtonStyle.green, label='Give Ear Muffs', key='give', disabled=not dsbl, ctx=ctx,
+                  member=member,
                   action=action),
     )
 
     self.add_item(
-      MuffsButton(style=ButtonStyle.red, label='Remove Ear Muffs', key='rem', disabled= dsbl, ctx=ctx, member=member,
+      MuffsButton(style=ButtonStyle.red, label='Remove Ear Muffs', key='rem', disabled=dsbl, ctx=ctx, member=member,
                   action=action),
     )
 
@@ -245,304 +261,296 @@ class Femdom2(commands.Cog):
     else:
       return roles
 
-  @commands.hybrid_command()
-  @commands.guild_only()
-  async def chastity(self, ctx, member: discord.Member):
-    """Blocks NSFW sub channels. Note: Dommes must own sub for chastity lock."""
-    if ctx.author.bot:
-      return
+  async def check_error(self, ctx, msg: typing.Union[str, tuple[str, str]]):
+    """Sends a custom error that wasn't handled on self.proper_checks() due to any reason"""
+    if callable(msg):
+      msg = msg()  # lambda
+
+    title = 'Nah'
+
+    if isinstance(msg, tuple):  # (title, desc)
+      title, msg = msg
+
+    em = discord.Embed(title=title, description=msg, color=0xF2A2C0)
+    m = await ctx.send(embed=em)
+    await m.reply('<:no:1178686922768519280>')
+
+  async def proper_checks(self, ctx: commands.Context, member: discord.Member, messages: dict,
+                          return_whois: bool = False) -> bool:
+    """Does the checks on whether the command should be run (relationship checks, etc.)"""
 
     if not database.is_config(ctx.guild.id):  # if bot is not configred in the server
       embed = discord.Embed(title='I am not ready yet.',
                             description=f"Ask the Admins to run the command **`/setup`** and try again",
                             color=0xF2A2C0)
       await ctx.send(embed=embed)
+      if return_whois:
+        return False, -1
+      return False
+
+    if member.id == self.bot.user.id:  # Temptress ID, owning Temptress
+      embed = discord.Embed(description=messages.get('on_temptress', "You can't run this command on me! 😤"),
+                            color=0xF2A2C0)
+      await ctx.send(embed=embed)
+      print('bot')
+      if return_whois:
+        return False, -1
+      return False
+
+    if member.bot:  # owning a random bot
+      if messages.get('on_bot') != True:
+        embed = discord.Embed(description=messages.get('on_bot', "You can't run this command on a bot! 🐲"),
+                              color=0xF2A2C0)
+        await ctx.send(embed=embed)
+        print('bot')
+        if return_whois:
+          return False, -1
+        return False
+
+    # relationship
+    print('whois')
+    member_is = who_is(ctx.author, member)
+    print(f'The relationship is: {member_is}')
+
+    if member_is in [222, 111]:
+      msg = f"{member.mention} should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}"
+    elif member_is == 0:
+      msg = f"{ctx.author.mention}, you should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}"
+    elif member_is == -1:
+      msg = ("Bot ban", f"{member.mention} is banned from using {self.bot.user.mention}")
+    elif member_is == 69:
+      msg = f"{ctx.author.mention} i'm sorry but i can't let you do it. {member.mention} asked me to protect them from any actions that aren't from their owners."
+    elif member_is < -1:
+      msg = (
+        "Bot ban",
+        f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{member_is * -1}:F>")
+    else:
+      if member_is > 300 and messages.get('>300') is not None:
+        if return_whois:
+          return True, member_is
+        return True
+
+      msg = messages.get(str(member_is))
+
+    if msg is not None:
+      if callable(msg):
+        msg = msg()  # lambda
+
+      if isinstance(msg, tuple):  # (title, desc)
+        title, msg = msg
+      else:
+        title = 'Nah' if member_is in [2, 202, 201, 300] else 'Pathetic!'
+
+      em = discord.Embed(title=title, description=msg, color=0xF2A2C0)
+      await ctx.send(embed=em)
+      if return_whois:
+        return False, member_is
+      return False
+
+    if return_whois:
+      return True, member_is
+    return True
+
+  @commands.hybrid_command()
+  @commands.guild_only()
+  async def chastity(self, ctx, member: discord.Member):
+    """Blocks NSFW sub channels. Note: Dommes must own sub for chastity lock."""
+    should_continue, member_is = await self.proper_checks(ctx, member, messages=dict(
+      on_temptress=f"You can't deny my cum permission, I will cum all day long and you can't stop me.<a:bully:968288741733064814>",
+      on_bot=f"You can't keep Bots in chastity.",
+      **{
+        "1": lambda: f"Pathetic!!, This simpleton slave is trying to be in chastity!, {ctx.author.mention} you can't "
+                     f"do anything without Domme's permission.",
+        "2": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                     f"a Domme in chastity.",
+        "202": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                       f"a Domme in chastity.",
+        "201": lambda: f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
+                       f" the sub must be owned by you.",
+        ">300": lambda: f"{member.mention} is owned by somebody else it's their property.",
+        "101": lambda: f"You foolish slave. You think you can chastity lock when you are a slave, {ctx.author.mention}! "
+                       f"how Pathetic!!!\nI need to tell this joke to Deity, they will love it.",
+        "102": lambda: f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
+                       f'will never be! How could you even consider trying something s'
+                       f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave'
+      }
+    ), return_whois=True)
+
+    if not should_continue:
       return
 
-    if member.bot:
-      if member.id == self.bot.user.id:
-        embed = discord.Embed(title='Nah',
-                              description=f"You can't deny my cum permission, I will cum all day long and you can't stop me.<a:bully:968288741733064814>",
-                              color=0xF2A2C0)
-        await ctx.send(embed=embed)
-      else:
-        embed = discord.Embed(title='Nah',
-                              description=f"You can't keep Bots in chastity.",
-                              color=0xF2A2C0)
-        await ctx.send(embed=embed)
-    else:
-      if member.guild_permissions.administrator:
-        embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
-                              color=0xF2A2C0)
-        await ctx.reply(embed=embed)
-        return
-      action = Action(self.bot, ctx, member)
-      member_is = who_is(ctx.author, member)
-      if member_is == 1:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"Pathetic!!, This simpleton slave is trying to be in chastity!, {ctx.author.mention} you can't "
-                                          f"do anything without Domme's permission.",
-                              color=0xF2A2C0)
-      elif member_is == 2 or member_is == 202:
-        embed = discord.Embed(title='Nah',
-                              description=f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
-                                          f"a Domme in chastity.",
-                              color=0xF2A2C0)
+    if member.guild_permissions.administrator:
+      embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
+                            color=0xF2A2C0)
+      await ctx.reply(embed=embed)
+      return
 
-      elif member_is == 201:
-        embed = discord.Embed(title='Nah',
-                              description=f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
-                                          f" the sub must be owned by you.",
-                              color=0xF2A2C0)
+    action = Action(self.bot, ctx, member)
 
-      elif member_is == 200:
-        embed = discord.Embed(title='So what should I do?', color=0xF2A2C0)
-        await ctx.send(embed=embed, view=ChastityView(action, member, ctx))
-        return
-
-      elif member_is > 300:
-        embed = discord.Embed(title='Nah',
-                              description=f"{member.mention} is owned by somebody else it's their property.",
-                              color=0xFF2030)
-
-      elif member_is == 101:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"You foolish slave. You think you can chastity lock when you are a slave, {ctx.author.mention}! "
-                                          f"how Pathetic!!!\nI need to tell this joke to Deity, they will love it.",
-                              color=0xF2A2C0)
-
-      elif member_is == 102:
-        embed = discord.Embed(title=f'You shall not try such thing!',
-                              description=f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
-                                          f'will never be! How could you even consider trying something s'
-                                          f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave',
-                              color=0xFF2030)
-
-      elif member_is == 222 or member_is == 111:  # when mentioned member does't have slave or domme role
-        embed = discord.Embed(
-          description=f"{member.mention} should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
-
-      elif member_is == 0:  # when the author doesn't have domme or slave role.
-        embed = discord.Embed(
-          description=f"{ctx.author.mention}, you should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
-
-      elif member_is == -1:  # when member is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{member.mention} is banned from using {self.bot.user.mention}",
-                              color=0xF2A2C0)
-      elif member_is < -1:  # when author is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{member_is * -1}:F>",
-                              color=0xF2A2C0)
-
-      await action.react('n')
-      await ctx.send(embed=embed)
+    # --------------------------------------------------------
+    if member_is == 200:
+      embed = discord.Embed(title='So what should I do?', color=0xF2A2C0)
+      await ctx.send(embed=embed, view=ChastityView(action, member, ctx))
+      return
 
   @commands.hybrid_command()
   @commands.guild_only()
   async def muffs(self, ctx, member: discord.Member):
     """Blocks sub voice channels. Note: Dommes must own sub for voice block."""
-    if ctx.author.bot:
+
+    should_continue, member_is = await self.proper_checks(ctx, member, messages=dict(
+      on_bot=f"{member.mention} is bot don't be dumb like Shaman.",
+      **{
+        "1": lambda: f"Pathetic!!, This simpleton slave is trying to cover ears!, {ctx.author.mention} you can't "
+                     f"do anything without Domme's permission.",
+        "2": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                     f"a Domme suffering.",
+        "202": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                       f"a Domme suffering.",
+        "201": lambda: f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
+                       f" the sub must be owned by you.",
+        ">300": lambda: f"{member.mention} is owned by somebody else it's their property.",
+        "101": lambda: f"You foolish slave. You think you can Ear Muff someone when you are a slave, {ctx.author.mention}! "
+                       f"how Pathetic!!!\n I need to tell this joke to Deity, they will love it.",
+        "102": lambda: f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
+                       f'will never be! How could you even consider trying something s'
+                       f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave'
+      }
+    ), return_whois=True)
+
+    if not should_continue:
       return
 
-    if not database.is_config(ctx.guild.id):  # if bot is not configred in the server
-      embed = discord.Embed(title='I am not ready yet.',
-                            description=f"Ask the Admins to run the command **`/setup`** and try again",
+    if member.guild_permissions.administrator:
+      embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
                             color=0xF2A2C0)
-      await ctx.send(embed=embed)
+      await ctx.reply(embed=embed)
       return
 
-    if member.bot:
-      embed = discord.Embed(title='Nah',
-                            description=f"{member.mention} is bot don't be dumb like Shaman.",
-                            color=0xF2A2C0)
-      await ctx.send(embed=embed)
-    else:
-      if member.guild_permissions.administrator:
-        embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
-                              color=0xF2A2C0)
-        await ctx.reply(embed=embed)
-        return
-      action = Action(self.bot, ctx, member)
-      member_is = who_is(ctx.author, member)
-      if member_is == 1:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"Pathetic!!, This simpleton slave is trying to cover ears!, {ctx.author.mention} you can't "
-                                          f"do anything without Domme's permission.",
-                              color=0xF2A2C0)
-      elif member_is == 2 or member_is == 202:
-        embed = discord.Embed(title='Nah',
-                              description=f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
-                                          f"a Domme suffering.",
-                              color=0xF2A2C0)
+    action = Action(self.bot, ctx, member)
 
-      elif member_is == 201:
-        embed = discord.Embed(title='Nah',
-                              description=f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
-                                          f" the sub must be owned by you.",
-                              color=0xF2A2C0)
-
-      elif member_is == 200:
-        print('BRUH!')
-        embed = discord.Embed(title='So what should I do?', color=0xF2A2C0)
-        await ctx.send(embed=embed, view=MuffsView(action, member, ctx))
-        return
-
-      elif member_is > 300:
-        embed = discord.Embed(title='Nah',
-                              description=f"{member.mention} is owned by somebody else it's their property.",
-                              color=0xFF2030)
-
-      elif member_is == 101:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"You foolish slave. You think you can Ear Muff someone when you are a slave, {ctx.author.mention}! "
-                                          f"how Pathetic!!!\n I need to tell this joke to Deity, they will love it.",
-                              color=0xF2A2C0)
-
-      elif member_is == 102:
-        embed = discord.Embed(title=f'You shall not try such thing!',
-                              description=f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
-                                          f'will never be! How could you even consider trying something s'
-                                          f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave',
-                              color=0xFF2030)
-
-      elif member_is == 222 or member_is == 111:  # when mentioned member does't have slave or domme role
-        embed = discord.Embed(
-          description=f"{member.mention} should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
-
-      elif member_is == 0:  # when the author doesn't have domme or slave role.
-        embed = discord.Embed(
-          description=f"{ctx.author.mention}, you should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
-
-      elif member_is == -1:  # when member is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{member.mention} is banned from using {self.bot.user.mention}",
-                              color=0xF2A2C0)
-      elif member_is < -1:  # when author is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{member_is * -1}:F>",
-                              color=0xF2A2C0)
-
-      await action.react('n')
-      await ctx.send(embed=embed)
+    # --------------------------------------------------------
+    if member_is == 200:
+      print('BRUH!')
+      embed = discord.Embed(title='So what should I do?', color=0xF2A2C0)
+      await ctx.send(embed=embed, view=MuffsView(action, member, ctx))
+      return
 
   @commands.hybrid_command()
   @commands.guild_only()
   @commands.cooldown(3, 4 * 60 * 60, commands.BucketType.user)
   async def blind(self, ctx, member: discord.Member):
     """This command blocks all sub channels for 5 minutes. Note: Dommes must own a sub before using this."""
-    if ctx.author.bot:
+
+    should_continue, member_is = await self.proper_checks(ctx, member, messages=dict(
+      on_temptress=f"You can't blindfold me, my eyes are powerful I see everything.",
+      on_bot=f"You can't blindfold Bots.",
+      **{
+        "1": lambda: f"Pathetic!!, This simpleton slave is trying to blindfold!, {ctx.author.mention} you can't "
+                     f"do anything without Domme's permission.",
+        "2": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                     f"a Domme blindfolded.",
+        "202": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
+                       f"a Domme blindfolded.",
+        "201": lambda: f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
+                       f" the sub must be owned by you.",
+        ">300": lambda: f"{member.mention} is owned by somebody else it's their property.",
+        "101": lambda: f"You foolish slave. You think you can blindfold someone when you are a slave, {ctx.author.mention}! "
+                       f"how Pathetic!!!\nI need to tell this joke to Deity, they will love it.",
+        "102": lambda: f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
+                       f'will never be! How could you even consider trying something s'
+                       f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave'
+      }
+    ), return_whois=True)
+
+    if not should_continue:
       return
 
-    if not database.is_config(ctx.guild.id):  # if bot is not configred in the server
-      embed = discord.Embed(title='I am not ready yet.',
-                            description=f"Ask the Admins to run the command **`/setup`** and try again",
+    if member.guild_permissions.administrator:
+      embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
                             color=0xF2A2C0)
-      await ctx.send(embed=embed)
+      await ctx.reply(embed=embed)
       return
 
-    if member.bot:
-      if member.id == self.bot.user.id:
-        embed = discord.Embed(title='Nah',
-                              description=f"You can't blindfold me, my eyes are powerful I see everything.",
-                              color=0xF2A2C0)
-        await ctx.send(embed=embed)
-      else:
-        embed = discord.Embed(title='Nah',
-                              description=f"You can't blindfold Bots.",
-                              color=0xF2A2C0)
-        await ctx.send(embed=embed)
-    else:
-      if member.guild_permissions.administrator:
-        embed = discord.Embed(description=f"{member.mention} have administrator permission, I am sorry.",
-                              color=0xF2A2C0)
-        await ctx.reply(embed=embed)
-        return
-      action = Action(self.bot, ctx, member)
-      member_is = who_is(ctx.author, member)
-      if member_is == 1:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"Pathetic!!, This simpleton slave is trying to blindfold!, {ctx.author.mention} you can't "
-                                          f"do anything without Domme's permission.",
-                              color=0xF2A2C0)
-      elif member_is == 2 or member_is == 202:
-        embed = discord.Embed(title='Nah',
-                              description=f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
-                                          f"a Domme blindfolded.",
-                              color=0xF2A2C0)
+    action = Action(self.bot, ctx, member)
 
-      elif member_is == 201:
-        embed = discord.Embed(title='Nah',
-                              description=f"{ctx.author.mention}, you can't do such a thing. {member.mention} is a free slave!"
-                                          f" the sub must be owned by you.",
-                              color=0xF2A2C0)
+    # --------------------------------------------------------
 
-      elif member_is == 200:
-        embed = discord.Embed(title='Are you sure that you wanna do this?',
-                              description=f"{member.mention} will not be able to see any channels in this server for 5 mins.",
-                              color=0xF2A2C0)
+    if member_is == 200:
+      embed = discord.Embed(title='Are you sure that you wanna do this?',
+                            description=f"{member.mention} will not be able to see any channels in this server for 5 mins.",
+                            color=0xF2A2C0)
 
-        if member.id in self.bot.blinded_users.get(ctx.guild.id, []):
-          em = discord.Embed(title='They are already blindfolded!',
-                             description=f"{member.mention} is already blindfolded, do you want to undo the blind?",
-                             color=discord.Color.brand_red())
+      if member.id in self.bot.blinded_users.get(ctx.guild.id, []):
+        em = discord.Embed(title='They are already blindfolded!',
+                           description=f"{member.mention} is already blindfolded, do you want to undo the blind?",
+                           color=discord.Color.brand_red())
 
-          async def unblind(mem):
-            channels = await mem.guild.fetch_channels()
-            for channel in channels:
-              await channel.set_permissions(mem, overwrite=None)
+        async def unblind(mem):
+          channels = await mem.guild.fetch_channels()
+          for channel in channels:
+            await channel.set_permissions(mem, overwrite=None)
 
-          return await ctx.send(embed=em, view=YesNoView(member, action=unblind, msg=dict(
-            title='Blindfold removed!',
-            description=f'{member.mention} can now see!'
-          )))
+        return await ctx.send(embed=em, view=YesNoView(member, action=unblind, msg=dict(
+          title='Blindfold removed!',
+          description=f'{member.mention} can now see!'
+        )))
 
-        await ctx.send(embed=embed, view=BlindView(action, member, ctx))
+      await ctx.send(embed=embed, view=BlindView(action, member, ctx))
+      return
+
+  @commands.hybrid_command()
+  @general_checks()
+  async def safeword(self, ctx: commands.Context):
+    """apply a safeword if you are not feeling right."""
+
+    # must be sub/switch
+    is_locked = discord.utils.get(ctx.author.roles, name='Prisoner')
+
+    if roleplay_role(ctx.author) not in ['sub', 'switch'] and not is_locked:
+      return await self.check_error(ctx, "You must be a sub or switch to use this command.")
+
+    # is gagged / is blindfolded / is fullgagged / is locked
+    dbrsp = database.get_slave_from_DB(ctx.author.id, ctx.guild.id)[0]
+
+    is_gagged = dbrsp[2] != 'off'
+
+    if not (is_gagged or is_locked):
+      return await self.check_error(ctx, "You are not under anything, relax 😤.")
+
+    safelog_channel = database.get_config('safelog', ctx.guild.id)[0]
+    if safelog_channel:
+      safelog_channel = ctx.guild.get_channel(int(safelog_channel))
+
+    async def send_safelog(on: str):
+      if not safelog_channel:
         return
 
-      elif member_is > 300:
-        embed = discord.Embed(title='Nah',
-                              description=f"{member.mention} is owned by somebody else it's their property.",
-                              color=0xFF2030)
+      em = discord.Embed(
+        title='<:catblushyyy:1103124612637802496> safeword used!',
+        description=f'**{on}** was too much for {ctx.author.mention} to handle.',
+        color=discord.Color.brand_red()
+      )
+      em.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url)
+      em.timestamp = ctx.message.created_at
+      await safelog_channel.send(embed=em)
 
-      elif member_is == 101:
-        embed = discord.Embed(title='Pathetic...',
-                              description=f"You foolish slave. You think you can blindfold someone when you are a slave, {ctx.author.mention}! "
-                                          f"how Pathetic!!!\nI need to tell this joke to Deity, they will love it.",
-                              color=0xF2A2C0)
+    em = discord.Embed(
+      title='Safeword Applied',
+      description=f'You are not under anything anymore.',
+      color=discord.Color.brand_green()
+    )
 
-      elif member_is == 102:
-        embed = discord.Embed(title=f'You shall not try such thing!',
-                              description=f'{ctx.author.mention}, you are a slave, you are not as powerful as a domme and you '
-                                          f'will never be! How could you even consider trying something s'
-                                          f'o foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave',
-                              color=0xFF2030)
+    if is_gagged:
+      database.update_slaveDB(ctx.author.id, 'gag', 'off', ctx.guild.id)
+      em.description = f"<:catblushyyy:1103124612637802496> {ctx.author.mention} you used the safeword, you are not gagged anymore."
+      await ctx.send(embed=em)
+      await send_safelog('Fullgag' if dbrsp[2] == 'fullgag' else f'Gag ({dbrsp[2]})')
+      return
 
-      elif member_is == 222 or member_is == 111:  # when mentioned member does't have slave or domme role
-        embed = discord.Embed(
-          description=f"{member.mention} should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
 
-      elif member_is == 0:  # when the author doesn't have domme or slave role.
-        embed = discord.Embed(
-          description=f"{ctx.author.mention}, you should have any of the following roles \n{self.list_roles(database.get_config('domme', member.guild.id))}\n{self.list_roles(database.get_config('slave', member.guild.id))}",
-          color=0xF2A2C0)
 
-      elif member_is == -1:  # when member is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{member.mention} is banned from using {self.bot.user.mention}",
-                              color=0xF2A2C0)
-      elif member_is < -1:  # when author is bot banned
-        embed = discord.Embed(title='Bot ban',
-                              description=f"{ctx.author.mention} you are banned from using {self.bot.user.mention} till <t:{member_is * -1}:F>",
-                              color=0xF2A2C0)
 
-      await action.react('n')
-      await ctx.send(embed=embed)
 
   ##############################################################################
   #                                                                            #
@@ -589,6 +597,7 @@ class Femdom2(commands.Cog):
       await ctx.send(embed=embed)
 
     raise error
+
 
 async def setup(bot):
   await bot.add_cog(Femdom2(bot))

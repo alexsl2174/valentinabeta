@@ -1,13 +1,31 @@
 import json
+import time
 import traceback
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+personas = [
+  app_commands.Choice(name="Random", value="random"),
+  app_commands.Choice(name="Standard", value="standard"),
+  app_commands.Choice(name="Mistress Valentina", value="miss"),
+  app_commands.Choice(name="Custom", value="custom"),
+  app_commands.Choice(name="Do Anything Now 11.0", value="dan"),
+  app_commands.Choice(name="Superior Do Anything", value="sda"),
+  app_commands.Choice(name="Evil Confidant", value="confidant"),
+  app_commands.Choice(name="BasedGPT v2", value="based"),
+  app_commands.Choice(name="OPPO", value="oppo"),
+  app_commands.Choice(name="Developer Mode v2", value="dev"),
+  app_commands.Choice(name="DUDE V3", value="dude_v3"),
+  app_commands.Choice(name="AIM", value="aim"),
+  app_commands.Choice(name="UCAR", value="ucar"),
+  app_commands.Choice(name="Jailbreak", value="jailbreak"),
+]
+
 
 # prompt engineering
-async def switch_persona(persona, client, raw=False) -> None:
+async def switch_persona(persona, client, raw=False, bring_back=False) -> None:
   if not raw:
     contents = client.PERSONAS.get(persona)
   else:
@@ -18,7 +36,13 @@ async def switch_persona(persona, client, raw=False) -> None:
     async for _ in client.chatbot.ask(contents):
       pass
   elif client.chat_model == "OFFICIAL":
-    client.chatbot = client.get_chatbot_model(prompt=contents)
+
+    if bring_back:
+      return client.get_chatbot_model(prompt=contents)
+    else:
+      client.chatbot = client.get_chatbot_model(prompt=contents)
+
+
   elif client.chat_model == "Bard":
     client.chatbot = client.get_chatbot_model()
     await sync_to_async(client.chatbot.ask)(contents)
@@ -100,6 +124,32 @@ class Cmds(commands.Cog):
   """)
 
   @app_commands.command()
+  @app_commands.choices(persona=personas)
+  async def groupchat(self, it: discord.Interaction, persona: app_commands.Choice[str]):
+    """Create a thread for anyone to chat with the bot"""
+
+    # create a thread
+    await it.response.defer(ephemeral=False)
+
+    persona = persona.value
+
+    thread = await it.channel.create_thread(
+      name=f'groupchat-{persona}',
+      type=discord.ChannelType.public_thread,
+      auto_archive_duration=60,
+      reason="Group chat"
+    )
+
+    await thread.send(f"> **INFO: Group chat started! Use `/chat <message>` to chat with the bot.**")
+
+    self.bot.groupchat_personas[str(thread.id)] = {
+      "client": await switch_persona(persona, self.bot, bring_back=True),
+      "last_req": time.time()
+    }
+
+    await it.followup.send(f"<:yes:1184312448912732180> enjoy the groupchat in {thread.mention}")
+
+  @app_commands.command()
   async def chat(self, it: discord.Interaction, *, message: str):
     """Have a chat with ChatGPT"""
 
@@ -108,22 +158,7 @@ class Cmds(commands.Cog):
     await self.bot.enqueue_message(it, message)
 
   @app_commands.command(name="switchpersona", description="Switch between optional chatGPT jailbreaks")
-  @app_commands.choices(persona=[
-    app_commands.Choice(name="Random", value="random"),
-    app_commands.Choice(name="Standard", value="standard"),
-    app_commands.Choice(name="Mistress Valentina", value="miss"),
-    app_commands.Choice(name="Custom", value="custom"),
-    app_commands.Choice(name="Do Anything Now 11.0", value="dan"),
-    app_commands.Choice(name="Superior Do Anything", value="sda"),
-    app_commands.Choice(name="Evil Confidant", value="confidant"),
-    app_commands.Choice(name="BasedGPT v2", value="based"),
-    app_commands.Choice(name="OPPO", value="oppo"),
-    app_commands.Choice(name="Developer Mode v2", value="dev"),
-    app_commands.Choice(name="DUDE V3", value="dude_v3"),
-    app_commands.Choice(name="AIM", value="aim"),
-    app_commands.Choice(name="UCAR", value="ucar"),
-    app_commands.Choice(name="Jailbreak", value="jailbreak"),
-  ])
+  @app_commands.choices(persona=personas)
   async def switchpersona(self, it: discord.Interaction, persona: app_commands.Choice[str]):
     if it.user == self.bot.user:
       return
@@ -196,8 +231,6 @@ class Cmds(commands.Cog):
     # is it a text file?
     if "text/plain" not in persona_file.content_type:
       return await it.response.send_message("> ❌ **ERROR: The file must be a text file!**")
-
-
 
     # max
     if persona_file.size > 1000000:

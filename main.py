@@ -15,15 +15,16 @@ from typing import Union
 
 import discord
 from discord import ButtonStyle
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from revChatGPT.V1 import AsyncChatbot
 from revChatGPT.V3 import Chatbot
 
+import database
 
 DONATORS = [
-297961554673008641,
-200042084709826560,
+  297961554673008641,
+  200042084709826560,
 ]
 
 load_dotenv()
@@ -34,7 +35,12 @@ import help_embed as hell
 
 
 async def official_handle_response(message, client, user_id) -> str:
-  return await sync_to_async(client.chatbot.ask)(message, convo_id=str(user_id))
+  if isinstance(client, Chatbot):
+    ask = client.ask
+  else:
+    ask = client.chatbot.ask
+
+  return await sync_to_async(ask)(message, convo_id=str(user_id))
 
 
 async def unofficial_handle_response(message, client) -> str:
@@ -109,6 +115,8 @@ class TemptressBot(commands.Bot):
       with open("custom_personas.json", "r") as f:
         self.custom_personas = json.load(f)
 
+    self.groupchat_personas = {}
+
     self.current_channel = None
     self.activity = discord.Activity(type=discord.ActivityType.listening, name="/chat | /help")
 
@@ -170,17 +178,29 @@ class TemptressBot(commands.Bot):
       if filename.endswith('.py'):
         await bot.load_extension(f"Cogs.{filename[:-3]}")
 
-    #await bot.load_extension('jishaku')
+    await bot.load_extension('jishaku')
 
     print(f"{bot.user} is ready!")
 
     loop = asyncio.get_event_loop()
     loop.create_task(self.process_messages())
 
+  @tasks.loop(hours=5)
+  async def delete_idle_groupchats(self):
+    """Delete groupchats that have been idle for 5 hours"""
+    print('checking idle groupchats')
+    for channel_id, it in self.groupchat_personas.items():
+      if (time.time() - info["last_req"]) > 18000:
+        print(f'deleted {channel_id} for archiving')
+        await self.get_channel(int(channel_id)).delete()
+        del self.groupchat_personas[channel_id]
+
   async def on_ready(self):
     await bot.change_presence(
       activity=discord.Activity(type=discord.ActivityType.playing, name="with your mind.")
     )
+
+    self.delete_idle_groupchats.start()
 
   def update_bot_stats(self, section: str, consumer, add_count=1):
     """Update the bot's stats"""
@@ -198,10 +218,10 @@ class TemptressBot(commands.Bot):
     """On app command completion, use this to increase command usage"""
     self.update_bot_stats('guilds', it.guild_id)
     self.update_bot_stats('users', it.user.id)
-    print('added to count', self.command_uses)
+    # print('added to count', self.command_uses)
 
     now = time.time()
-    print(self.last_ad)
+    # print(self.last_ad)
     if self.command_uses['users'][str(it.user.id)] % 20 == 0 and (now - self.last_ad.get(it.user.id, 0)) > 900:
       # obviously dont send ads to the owner :p
       if it.user.id == self.owner_id or it.user.id in DONATORS:
@@ -254,10 +274,37 @@ class TemptressBot(commands.Bot):
   async def send_message(self, message, user_message):
     author = message.user.id
 
+    print(f'thread message? {message}')
+    print(f'{message.channel=}')
+    print(f'{message.channel.id=}')
+    is_in_groupchat = str(message.channel.id) in self.groupchat_personas
+
     try:
       response = (f'> **{user_message}** - <@{str(author)}> \n\n')
       if self.chat_model == "OFFICIAL":
-        response = f"{response}{await official_handle_response(f'(MY NAME IS {message.user.name}, keep that in mind.) ' + user_message, self, user_id=author)}"
+        # can be sub, domme, or switch
+        member = message.user
+        domme = database.get_config('domme', member.guild.id)[0]
+        sub = database.get_config('slave', member.guild.id)[0]
+        switch = database.get_config('switch', member.guild.id)[0]
+        has_role = lambda rid: str(rid) in [str(role.id) for role in member.roles]
+        role = "sub" if has_role(sub) else "domme" if has_role(domme) else "switch" if has_role(switch) else None
+
+        if role:
+          me_prompt_addition = f"(MY NAME IS {message.user.display_name} and I am acting as a {role} keep that in mind.)"
+        else:
+          me_prompt_addition = f"(MY NAME IS {message.user.display_name} keep that in mind.)"
+
+        if is_in_groupchat:
+          hs = await official_handle_response(
+            me_prompt_addition + user_message,
+            self.groupchat_personas[str(message.channel.id)]["client"],
+            user_id=message.channel.id
+          )
+          response = f"{response}{hs}"
+          self.groupchat_personas[str(message.channel.id)]["last_req"] = time.time()
+        else:
+          response = f"{response}{await official_handle_response(me_prompt_addition + user_message, self, user_id=author)}"
       elif self.chat_model == "UNOFFICIAL":
         response = f"{response}{await unofficial_handle_response(user_message, self)}"
       elif self.chat_model == "Bard":
@@ -281,7 +328,7 @@ async def sync(ctx):
   Sync global commands to Discord.
   This is needed whenever you update a slash commands' structure.
   """
-  is_owner = await bot.is_owner(ctx.author)
+  is_owner = await bot.is_owner(ctx.author) or ctx.author.id == 297961554673008641
 
   if is_owner or ctx.author.id in BOT_ADMINS:
     slash_commands = bot.tree._get_all_commands(guild=None)
@@ -327,6 +374,7 @@ class HelpView(discord.ui.View):
       disabled = label == current
       self.add_item(HelpButton(embed=embed, label=label, style=style, disabled=disabled))
 
+
 @bot.tree.command()
 async def donate(it: discord.Interaction):
   """Donate to Miss Valentina 💐"""
@@ -341,6 +389,7 @@ async def donate(it: discord.Interaction):
 
   await it.response.send_message(embed=em, ephemeral=True)
   bot.last_ad[it.user.id] = time.time()
+
 
 @bot.tree.command()
 async def help(
