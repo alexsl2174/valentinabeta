@@ -11,6 +11,7 @@ command_uses.json
 custom_personas.json
 
 # Byte-compiled / optimized / DLL files
+Utils/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
