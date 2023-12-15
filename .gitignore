@@ -7,6 +7,8 @@ config.ini
 discord.log
 rep_chessGame.py.txt
 *.zip
+command_uses.json
+custom_personas.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
