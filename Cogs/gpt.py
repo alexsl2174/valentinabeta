@@ -7,20 +7,11 @@ from discord import app_commands
 from discord.ext import commands
 
 personas = [
-  app_commands.Choice(name="Random", value="random"),
-  app_commands.Choice(name="Standard", value="standard"),
+  app_commands.Choice(name="Mister Dominic", value="Mister"),
+  app_commands.Choice(name="Switch Dominic", value="Switch mister"),
   app_commands.Choice(name="Mistress Valentina", value="miss"),
-  app_commands.Choice(name="Custom", value="custom"),
-  app_commands.Choice(name="Do Anything Now 11.0", value="dan"),
-  app_commands.Choice(name="Superior Do Anything", value="sda"),
-  app_commands.Choice(name="Evil Confidant", value="confidant"),
-  app_commands.Choice(name="BasedGPT v2", value="based"),
-  app_commands.Choice(name="OPPO", value="oppo"),
-  app_commands.Choice(name="Developer Mode v2", value="dev"),
-  app_commands.Choice(name="DUDE V3", value="dude_v3"),
-  app_commands.Choice(name="AIM", value="aim"),
-  app_commands.Choice(name="UCAR", value="ucar"),
-  app_commands.Choice(name="Jailbreak", value="jailbreak"),
+  app_commands.Choice(name="Switch Valentina", value="Switch miss"),
+  app_commands.Choice(name="Custom", value="custom")
 ]
 
 
