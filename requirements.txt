@@ -43,3 +43,4 @@ GoogleBard
 EdgeGPT
 selenium
 undetected-chromedriver
+git+https://github.com/InterStella0/starlight-dpy
