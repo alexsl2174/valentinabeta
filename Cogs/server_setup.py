@@ -2,13 +2,15 @@
 import asyncio
 import re
 
-import database
+from utils import database
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 
 class ServerConfig(commands.Cog):
+  """commands to configure the bot"""
+
   def __init__(self, bot):
     self.bot = bot
 
@@ -23,7 +25,6 @@ class ServerConfig(commands.Cog):
 
   @commands.Cog.listener()
   async def on_guild_join(self, guild):
-    kuro_usagi = self.bot.get_user(104373103802466304)
     owner_invite_embed = discord.Embed(title=f"Hi {guild.owner.name},",
                                        description=f"I have been invited to your server **{guild.name}**"
                                                    "\nI am a fun bot made for Femdom Communities to help Dommes to play with their subs and also punish them."
@@ -31,21 +32,27 @@ class ServerConfig(commands.Cog):
                                                    "\n> **`/help`** use this command to know me more.",
                                        color=0xF2A2C0)
     owner_invite_embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-    owner_invite_embed.set_footer(text=f'created by {kuro_usagi}')
     await guild.owner.send(embed=owner_invite_embed)
 
   @commands.Cog.listener()
   async def on_guild_remove(self, guild):
     database.remove_guild(guild.id)
 
-  @app_commands.command()
+  @commands.hybrid_command()
   @app_commands.guild_only()
   @app_commands.checks.has_permissions(administrator=True)
-  async def setup(self, it: discord.Interaction):
+  @app_commands.checks.bot_has_permissions(
+    send_messages=True,
+    manage_messages=True,
+    manage_roles=True,
+    manage_channels=True,
+    read_message_history=True,
+  )
+  async def setup(self, ctx: commands.Context):
     """
     [ADMIN ONLY] Set up the bot in the server to use it.
     """
-    check = lambda m: it.user.id == m.author.id and m.channel.id == it.channel.id
+    check = lambda m: ctx.author.id == m.author.id and m.channel.id == ctx.channel.id
 
     embeds = dict(
       setup_embed_domme=discord.Embed(
@@ -96,7 +103,6 @@ class ServerConfig(commands.Cog):
       embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
     m = None
-    ctx = await self.bot.get_context(it)
 
     setup_roles = {}
     prison_channel = None
@@ -115,7 +121,10 @@ class ServerConfig(commands.Cog):
         return await m.edit(embed=embeds['setup_embed_timeout'])
 
       if stage == 'reactionroles_channel':
+        print(f'{stage=}')
         channel = resp.channel_mentions
+        print(f'{resp.content}')
+        print(f'{resp.channel_mentions=} || {resp.raw_channel_mentions}')
 
         if not channel or not isinstance(channel[0], discord.TextChannel):
           rr_channel = await ctx.guild.create_text_channel(
@@ -129,9 +138,9 @@ class ServerConfig(commands.Cog):
                 send_messages=True
               )
             })
-          database.insert_config(stage, it.guild.id, str(rr_channel.id))
+          database.insert_config(stage, ctx.guild.id, str(rr_channel.id))
         else:
-          database.insert_config(stage, it.guild.id, str(channel[0].id))
+          database.insert_config(stage, ctx.guild.id, str(channel[0].id))
           rr_channel = channel[0]
 
         DOMME_REACTION, SUB_REACTION, SWITCH_REACTION = '<:domme:1178687097406754917>', '<:sub:1178687169108398140>', '<:switch:1178687257457197066>'
@@ -155,8 +164,8 @@ class ServerConfig(commands.Cog):
           await rrm.add_reaction(r)
 
         #  TODO REACTION ROLES
-        database.insert_config("reactionroles_message", it.guild.id, str(rrm.id))
-        database.insert_config("reactionroles_reactions", it.guild.id,
+        database.insert_config("reactionroles_message", ctx.guild.id, str(rrm.id))
+        database.insert_config("reactionroles_reactions", ctx.guild.id,
                                f"{DOMME_REACTION},{SUB_REACTION},{SWITCH_REACTION}")
 
 
@@ -166,9 +175,9 @@ class ServerConfig(commands.Cog):
 
         if not channel or not isinstance(channel[0], discord.TextChannel):
           prison_channel = await ctx.guild.create_text_channel('prison')
-          database.insert_config(stage, it.guild.id, str(prison_channel.id))
+          database.insert_config(stage, ctx.guild.id, str(prison_channel.id))
         else:
-          database.insert_config(stage, it.guild.id, str(channel[0].id))
+          database.insert_config(stage, ctx.guild.id, str(channel[0].id))
           prison_channel = channel[0]
 
       else:
@@ -178,7 +187,7 @@ class ServerConfig(commands.Cog):
           await m.edit(embed=embeds['setup_embed_fail'])
           return
 
-        database.insert_config(stage, it.guild.id, ",".join(map(str, resp.raw_role_mentions)))
+        database.insert_config(stage, ctx.guild.id, ",".join(map(str, resp.raw_role_mentions)))
         setup_roles[stage] = roles
 
       await resp.delete()
@@ -337,6 +346,28 @@ class ServerConfig(commands.Cog):
   @commands.hybrid_command()
   @commands.has_permissions(administrator=True)
   @commands.guild_only()
+  async def setglitterchannel(self, ctx, channel: discord.TextChannel = None):
+    """
+    This will set the channel where subs/switches can do glitter and dommes/switches can ruin it
+    """
+    channel = channel or ctx.channel
+
+    database.insert_config('glitterchannel', ctx.guild.id, channel.id)
+    await ctx.reply(f"<:yes:1184312448912732180> **{channel.mention}** is now the glitter channel.")
+
+  @commands.hybrid_command()
+  @commands.has_permissions(administrator=True)
+  @commands.guild_only()
+  async def cooldown_ruin(self, ctx, minutes: app_commands.Range[int, 5, 180] = 60):
+    """
+    Set the cooldown for the ruin command. Default is 60 minutes.
+    """
+    database.insert_config('ruin_cooldown', ctx.guild.id, minutes)
+    await ctx.reply(f"<:yes:1184312448912732180> The **`/ruin`** command now has **{minutes} minutes** cooldown ⏱️")
+
+  @commands.hybrid_command()
+  @commands.has_permissions(administrator=True)
+  @commands.guild_only()
   async def blacklist(self, ctx, member: discord.Member = None):
     """This will blacklist a mentioned member, and prevent them to lock any subs.
     If no arg, then willlist of blacklisted members."""
@@ -396,6 +427,20 @@ class ServerConfig(commands.Cog):
       embed.set_thumbnail(url=member.display_avatar.url)
       await ctx.send(embed=embed)
 
+  @setup.error
+  async def on_setup_error(self, it, error):
+
+    if isinstance(error, app_commands.BotMissingPermissions):
+      embed = discord.Embed(
+        title='I don\'t feel so good.',
+        description=f"I am restrained help - **{error}** then try again.",
+        color=0xFF2030
+      )
+      await it.response.send_message(embed=embed, ephemeral=True)
+      return
+
+    raise error
+
   @blacklist.error
   async def on_blacklist_error(self, ctx, error):
     if isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument) or isinstance(
@@ -422,7 +467,7 @@ class ServerConfig(commands.Cog):
       return
 
     DOMME_REACTION, SUB_REACTION, SWITCH_REACTION = database.get_config('reactionroles_reactions',
-                                                                                       payload.guild_id)
+                                                                        payload.guild_id)
 
     reaction_role = {
       DOMME_REACTION: database.get_config('domme', payload.guild_id)[0],

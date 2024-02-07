@@ -1,6 +1,6 @@
 #!/bin/python3
 
-import database
+from utils import database
 import discord
 from discord.ext import commands
 from discord.ext import menus
@@ -32,6 +32,7 @@ class MySource(menus.ListPageSource):
 
 
 class Misc(commands.Cog):
+  """misc commands, like urbandictionary define"""
   def __init__(self, bot):
     self.bot = bot
 

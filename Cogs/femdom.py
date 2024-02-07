@@ -6,14 +6,14 @@ import typing
 from random import choice
 import datetime
 
-import database
+from utils import database
 import discord
 import emoji as emo
 import requests
 import unicodedata
 from discord import ButtonStyle
 from discord.ext import commands
-from Utils.relationship import who_is
+from utils.relationship import who_is
 
 
 class YesNoView(discord.ui.View):
@@ -34,8 +34,6 @@ class YesNoView(discord.ui.View):
 
     with contextlib.suppress(discord.NotFound):
       await self.action(self.member)
-
-
 
     await it.message.edit(view=None, embed=discord.Embed(
       title=self.msg['title'],
@@ -142,7 +140,7 @@ class GagButton(discord.ui.Button):
       database.update_slaveDB(self.action.member.id, 'gag', self.key, self.action.member.guild.id)
       self.embed.description = self.embed.description.replace('%%', str(self.gag_minutes))
       await interaction.response.edit_message(embed=self.embed, view=None)
-      await interaction.channel.send('<:yes:1184312448912732180>')
+      await interaction.channel.send('<:sub:1178687169108398140>')
       print('ddeed')
 
       # create task in the background
@@ -257,7 +255,7 @@ class Action:
     """
     removes slave from ownership from DB
     """
-    database.disown_a_slave(self.member.id, self.member.guild.id)
+    database.disown_a_slave(slave=self.member.id, owner=self.author.id, guild=self.member.guild.id)
     disown_embed = discord.Embed(title=f'End of the Journey',
                                  description=f'The {self.author.mention} has decided to set you free, {self.member.mention}; '
                                              f'therefore, your shared journey has come to an end. Hope you both had fun, but it is now time to part ways',
@@ -431,7 +429,7 @@ class Action:
     sem = discord.Embed(color=0xF2A2C0)
 
     if has_role(slave):  # or has_role(switch): ***The command will stop here because of the "or" do not remove the #
-      name = member.nick or member.name
+      name = member.display_name
       owner = database.get_owner(member.id, member.guild.id)
       print(f'{name} {owner=}')
       if owner == 0 or not owner:
@@ -515,7 +513,8 @@ class Action:
         data = database.get_slave_from_DB(member, guild)[0]
         return f"{'' if data[6] else '🔏'}  {'' if data[7] else '🎧'}  {'😶🔴' if data[2] in ['kitty', 'puppy', 'cow', 'pig', 'noaminal'] else ''}  {'' if data[4] else '<:no:1178686922768519280>'}"
 
-      name = member.nick or member.name
+      name = member.display_name
+
       slaves_list = database.get_slaves(member.id, member.guild.id)
       if not slaves_list:
         owned_slaves = "> Until now, no one has proven themselves worthy of being owned by me"
@@ -557,7 +556,8 @@ class Action:
         data = database.get_slave_from_DB(member, guild)[0]
         return f"{'' if data[6] else '🔏'}  {'' if data[7] else '🎧'}  {'😶🔴' if data[2] in ['kitty', 'puppy', 'cow', 'pig', 'noaminal'] else ''}  {'' if data[4] else '<:no:1178686922768519280>'}"
 
-      name = member.nick or member.name
+      name = member.display_name
+
       slaves_list = database.get_slaves(member.id, member.guild.id)
       if not slaves_list:
         owned_slaves = "> Until now, no one has proven themselves worthy of being owned by me"
@@ -976,6 +976,7 @@ def general_checks(check_setup=True):
 
 
 class Femdom(commands.Cog):
+  """Femdom commands part 1 😏"""
   def __init__(self, bot):
     self.bot = bot
 
@@ -1002,7 +1003,7 @@ class Femdom(commands.Cog):
     if has_role(sub) or has_role(switch):
       # print('a')
       if database.is_botban(message.author.id) is None:
-        print('entering for', message.author)
+        # print('entering for', message.author)
         punishment = Punishment(ctx)
         await punishment.is_badword()
         await punishment.is_tiechannel()
@@ -1028,7 +1029,8 @@ class Femdom(commands.Cog):
 
   async def check_error(self, ctx, msg: typing.Union[str, tuple[str, str]]):
     """Sends a custom error that wasn't handled on self.proper_checks() due to any reason"""
-    msg = msg()  # lambda
+    if callable(msg):
+      msg = msg()  # lambda
 
     title = 'Nah'
 
@@ -1220,6 +1222,7 @@ class Femdom(commands.Cog):
 
   @commands.hybrid_command()
   @commands.guild_only()
+  @commands.bot_has_permissions(manage_messages=True)
   @general_checks()
   async def gag(self, ctx, member: discord.Member, gag_minutes: int = 10):
     """Gags sub for Dommes' fun. Note: Gem cost if Domme doesn't own (10 mins or custom i)."""
@@ -1247,18 +1250,17 @@ class Femdom(commands.Cog):
       return
 
     if gag_minutes < 1:
-      return await self.check_error(ctx, ('Nah', f"{ctx.author.mention}, you can't gag for less than 1 minute."))
+      return await self.check_error(ctx, f"{ctx.author.mention}, you can't gag for less than 1 minute.")
     if gag_minutes > 60:
-      return await self.check_error(ctx, (
-        'Nah', f"{ctx.author.mention}, you can't gag for more than 60 minutes, its too much!!!!!"))
+      return await self.check_error(ctx, f"{ctx.author.mention}, you can't gag for more than 60 minutes, its too much!!!!!")
 
     action = Action(self.bot, ctx, member)
     member_is = who_is(ctx.author, member)
 
     if member_is == 201:  # Domme gag in Free slave
       if database.get_money(ctx.author.id, ctx.guild.id)[3] <= 0:
-        return await self.check_error(ctx, ('Nah',
-                                            f"{ctx.author.mention}, you don't have magic gem, you need magic gem 💎 to gag/ungag because {member.mention} is a free slave!"))
+        return await self.check_error(ctx,
+                                      f"{ctx.author.mention}, you don't have magic gem, you need magic gem 💎 to gag/ungag because {member.mention} is a free slave!")
 
     embed = discord.Embed(title="What should I do?", color=0xF2A2C0)
     gag = database.get_slave_from_DB(member.id, ctx.guild.id)[0][2]
@@ -1271,16 +1273,17 @@ class Femdom(commands.Cog):
       print("Not taking money!")
 
   @commands.hybrid_command()
+  @commands.bot_has_permissions(manage_channels=True, manage_roles=True, manage_messages=True)
   @commands.guild_only()
   async def fullgag(self, ctx, member: discord.Member, gag_minutes: int = 10):
     """Full Gag sub for Dommes' fun, very aggressive! Note: Gem cost if Domme doesn't own (10 mins)."""
 
-    await ctx.defer()
+    allow_sub = getattr(ctx, 'is_part_of_wheel')
 
-    should_continue, member_is = await self.proper_checks(ctx, member, messages=dict(
-      on_temptress=f"Pff.. are you dumb, Ahahaha!!",
-      on_bot=f"{member.mention} is a bot not your slut!",
-      **{
+    with contextlib.suppress(Exception):
+      await ctx.defer()
+
+    possible_issues = {
         "2": lambda: f"I am sorry {ctx.author.mention}, but I can't do such a thing. It's unbearable to see "
                      f"a Domme being gagged.",
         "1": lambda: f"This Pathetic slave is trying to gag himself! {ctx.author.mention} only a "
@@ -1293,11 +1296,23 @@ class Femdom(commands.Cog):
                        f'so foolish!! {member.mention} I think someone needs to learn a lesson!!!, brainless slave',
 
       }
+
+    if allow_sub:
+      del possible_issues["1"]
+      del possible_issues["101"]
+      del possible_issues["102"]
+      del possible_issues[">300"]
+    print('yohoooo')
+    should_continue, member_is = await self.proper_checks(ctx, member, messages=dict(
+      on_temptress=f"Pff.. are you dumb, Ahahaha!!",
+      on_bot=f"{member.mention} is a bot not your slut!",
+      **possible_issues
     ), return_whois=True)
 
     if not should_continue:
+      print('bye')
       return
-
+    print('hi')
     if gag_minutes < 1:
       return await self.check_error(ctx, ('Nah', f"{ctx.author.mention}, you can't gag for less than 1 minute."))
     if gag_minutes > 60:

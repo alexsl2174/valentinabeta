@@ -2,12 +2,12 @@
 import asyncio
 import typing
 
-import database
+from utils import database
 import discord
 from discord import ButtonStyle
 from discord.ext import commands
-from Cogs.femdom import YesNoView
-from Utils.relationship import who_is, roleplay_role
+from cogs.femdom import YesNoView
+from utils.relationship import who_is, roleplay_role
 
 
 def general_checks(check_setup=True):
@@ -249,6 +249,7 @@ class Action:
 
 
 class Femdom2(commands.Cog):
+  """Femdom commands part 2 😏"""
   def __init__(self, bot):
     self.bot = bot
 

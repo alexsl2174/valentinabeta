@@ -24,13 +24,13 @@ from random import choice, getrandbits
 from string import ascii_letters
 import typing
 
-import database
+from utils import database
 import discord
 import unicodedata
 from PIL import Image, ImageDraw, ImageFont
 from discord import ButtonStyle
 from discord.ext import commands, tasks
-from Utils.relationship import who_is
+from utils.relationship import who_is
 
 
 def make_image(sentence, memberid, level=None):
@@ -47,7 +47,7 @@ def make_image(sentence, memberid, level=None):
     else:
       new_string += character.lower()
 
-  img = Image.open('./Image/blank_discord_bg.png')
+  img = Image.open('./assets/images/blank_discord_bg.png')
   font = ImageFont.truetype('./Fonts/Kalam-Bold.ttf', 43)
   draw = ImageDraw.Draw(img)
   avg_char_width = sum(font.getsize(char)[0] for char in ascii_letters) / len(ascii_letters)
@@ -55,7 +55,7 @@ def make_image(sentence, memberid, level=None):
   new_string = textwrap.fill(text=new_string, width=max_char_count)
 
   draw.text(xy=(img.size[0] / 2, img.size[1] / 2), text=new_string, font=font, fill='#ffffff', anchor='mm')
-  img.save(f'./Image/{memberid}.png')
+  img.save(f'./assets/temp/{memberid}.png')
   return new_string
 
 
@@ -99,11 +99,11 @@ class LockActionButton(discord.ui.Button):
   async def first_stage(self, it: discord.Interaction):
     if self.key == 'praise':
       print('HEI')
-      with open('Text_files/praise.txt', 'r') as praise:
+      with open('./assets/text/praise.txt', 'r') as praise:
         lines = praise.read().splitlines()
         sentence = choice(lines)
     elif self.key == 'degrade':
-      with open('Text_files/degrade.txt', 'r') as degrade:
+      with open('./assets/text/degrade.txt', 'r') as degrade:
         lines = degrade.read().splitlines()
         sentence = choice(lines)
     elif self.key == 'custom':
@@ -202,8 +202,7 @@ class LockActionButton(discord.ui.Button):
     with contextlib.suppress(AttributeError):
       roles = roles.replace(str(self.ctx.guild.premium_subscriber_role.id), '')
 
-    i_have_power = self.ctx.guild.get_member(
-      self.ctx.bot.user.id).top_role > self.member.top_role and self.ctx.guild.owner.id != self.member.id
+    i_have_power = (self.ctx.me.top_role > self.member.top_role) and (self.ctx.guild.owner.id != self.member.id if self.ctx.guild.owner else True)
 
     if not i_have_power:
       no_power_embed = discord.Embed(title='I don\'t have power',
@@ -258,7 +257,7 @@ class LockActionButton(discord.ui.Button):
 
     await prison.send(
       f"{self.member.mention} you have to write 👇 {num} times to be free or you have to wait 2h or use **`/escape`** to be free from prison. ||(it is case sensitive)||")
-    await prison.send(file=discord.File(f'./Image/{self.member.id}.png'))
+    await prison.send(file=discord.File(f'./assets/temp/{self.member.id}.png'))
     database.lock(self.member.id, self.ctx.guild.id, self.ctx.author.id, num, sentence, roles)
     database.add_money(self.ctx.author.id, self.ctx.guild.id, 50, 0)
 
@@ -298,6 +297,7 @@ class LockActionView(discord.ui.View):
 
 
 class Lock(commands.Cog):
+  """commands for the lock roleplay"""
   def __init__(self, bot):
     self.bot = bot
     self.escape_cleanup.start()
@@ -354,7 +354,9 @@ class Lock(commands.Cog):
       prison = channel.guild.get_channel(database.get_config('prison', channel.guild.id)[0])
       if prison is not None:
         await prison.set_permissions(prisoner, view_channel=True, send_messages=True, read_message_history=True)
-    await channel.set_permissions(prisoner, view_channel=False, send_messages=False)
+
+    with contextlib.suppress(discord.Forbidden):
+      await channel.set_permissions(prisoner, view_channel=False, send_messages=False)
 
   @commands.Cog.listener()
   async def on_message(self, message):
@@ -362,8 +364,10 @@ class Lock(commands.Cog):
     if author have prisoner role checks if its correct line and updates prison DB
     there is 10% of lossing 2 coins on every wrong lines
     """
+
     if message.author.bot:
       return
+
 
     if str(database.get_config('prisoner', message.guild.id)[0]) in [str(role.id) for role in message.author.roles]:
       data = database.get_prisoner(message.author.id, message.guild.id)
@@ -379,7 +383,7 @@ class Lock(commands.Cog):
           prisoner = message.guild.get_role(int(database.get_config('prisoner', message.guild.id)[0]))
           await message.author.remove_roles(prisoner)
           await message.reply(
-            f"{message.author.mention} you are now released from {message.channel.mention} for being a good boy and writing the lines.")
+            f"{message.author.mention} you are now released from {message.channel.mention} for good behavior and writing the lines.")
           database.insert_escape(message.author.id, message.guild.id, 0.2, 'cooldown')
           await member.add_roles(member.guild.get_role(
             int(database.get_config(self.bot.prison_roles[message.author.id], member.guild.id)[0])))
@@ -388,7 +392,7 @@ class Lock(commands.Cog):
         prison = message.guild.get_channel(int(database.get_config('prison', message.guild.id)[0]))
         await prison.send(
           f"{message.author.mention} you have to write 👇 {int(data[3] - 1)} times to be free or you have to wait 2h or use **`s.escape`** to be free from prison. ||(it is case sensitive)||")
-        await prison.send(file=discord.File(f'./Image/{message.author.id}.png'))
+        await prison.send(file=discord.File(f'./assets/temp/{message.author.id}.png'))
       else:
         await message.add_reaction('<:no:1178686922768519280>')
         if random.random() < 0.1:
@@ -575,7 +579,7 @@ class Lock(commands.Cog):
         await prison.set_permissions(prisoner, view_channel=True, send_messages=True, read_message_history=True)
         print(f'fix {prison}')
 
-      em = discord.Embed(title='What should this slave do while he is in prison?', color=0x9479ED)
+      em = discord.Embed(title='What should this slave do while they are in prison?', color=0x9479ED)
       await ctx.send(embed=em, view=LockActionView(ctx, member, member_is))
 
   @commands.hybrid_command()
@@ -602,7 +606,7 @@ class Lock(commands.Cog):
 
     if member_is < -1:  # if author is bot banned
       embed = discord.Embed(
-        description=f"{ctx.author.mention} you are banned from {self.bot.user.nick or self.bot.user.name} till <t:{-1 * member_is}:F>",
+        description=f"{ctx.author.mention} you are banned from {self.bot.user.display_name} till <t:{-1 * member_is}:F>",
         color=0xF2A2C0)
       await ctx.reply(embed=embed)
 

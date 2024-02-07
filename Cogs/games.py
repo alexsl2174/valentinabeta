@@ -2,12 +2,21 @@
 import asyncio
 import random
 
-import database
+from utils import database
 import discord
 from discord.ext import commands
 
 
+def custom_ruin_cooldown(message):
+  cooldown_minutes = int(database.get_config('ruin_cooldown', message.guild.id)[0]) or 60
+  return commands.Cooldown(1, 1 * cooldown_minutes * 60)
+
+
+
+
 class Games(commands.Cog):
+  """special games to play and more"""
+
   def __init__(self, bot):
     self.bot = bot
 
@@ -129,11 +138,28 @@ class Games(commands.Cog):
 
   @commands.hybrid_command()
   @commands.guild_only()
-  @commands.cooldown(1, 1 * 60 * 60, commands.BucketType.user)
+  @commands.dynamic_cooldown(custom_ruin_cooldown, commands.BucketType.user)
   async def ruin(self, ctx):
     """Counting earns pinkcoins, Dommes can ruin the game by running this. they will earn pinkcoins."""
     if ctx.author.bot:
       return
+
+    try:
+      data = database.get_config_raw('counting', ctx.guild.id).split(
+        '_')  # [number, channel, member, message, count_length]
+
+      if ctx.channel.id != int(data[1]):
+        await ctx.reply(f"You should use this command in <#{data[1]}>")
+        return False
+
+      return True
+    except AttributeError:
+      embed = discord.Embed(
+        description=f"Counting channel is not configured yet, ask Admins to run **`/setcount #countChannel`**",
+        color=0xF2A2C0)
+      await ctx.reply(embed=embed)
+      return False
+
     ban_data = database.is_botban(ctx.author.id)
     if ban_data is None:
       try:
@@ -221,6 +247,12 @@ class Games(commands.Cog):
     if ctx.author.bot:
       return
 
+    if ctx.author == member:
+      embed = discord.Embed(description=f"{ctx.author.mention} you can't {ctx.command.name} yourself!",
+                            color=0xF2A2C0)
+      await ctx.send(embed=embed)
+      return
+
     elif member.bot:  # when mentioned member is bot
       embed = discord.Embed(description=f"{member.mention} is a bot not a Person!",
                             color=0xF2A2C0)
@@ -232,7 +264,8 @@ class Games(commands.Cog):
       await ctx.send(embed=ban_embed)
       return
 
-    if (set(database.get_config('domme', ctx.guild.id)) & set([str(role.id) for role in member.roles])) or (set(database.get_config('switch', ctx.guild.id)) & set([str(role.id) for role in member.roles])):
+    if (set(database.get_config('domme', ctx.guild.id)) & set([str(role.id) for role in member.roles])) or (
+        set(database.get_config('switch', ctx.guild.id)) & set([str(role.id) for role in member.roles])):
       if ctx.channel.is_nsfw():
         money = database.get_money(ctx.author.id, ctx.guild.id)[2]
         if money >= 100:
@@ -242,10 +275,10 @@ class Games(commands.Cog):
             database.add_money(member.id, ctx.guild.id, 0, 5)
           database.simp(ctx.author.id, ctx.guild.id, member.id)
           simp_embed = discord.Embed(
-            title=f"{ctx.author.nick or ctx.author.name} Simps for {member.nick or member.name}",
+            title=f"{ctx.author.display_name} Simps for {member.display_name}",
             description=f"",
             color=0xF2A2C0)
-          with open('Text_files/simp_image.txt', 'r') as f:
+          with open('./assets/text/simp_image.txt', 'r') as f:
             lines = f.read().splitlines()
             link = random.choice(lines)
           simp_embed.set_image(url=link)
@@ -293,6 +326,33 @@ class Games(commands.Cog):
       embed.set_thumbnail(url=member.display_avatar.url)
       await ctx.send(embed=embed)
 
+  @commands.hybrid_command()
+  @commands.guild_only()
+  @commands.cooldown(3, 1 * 60 * 30, commands.BucketType.user)
+  async def bondageroulette(self, ctx: commands.Context, member: discord.Member):
+    """
+    Subs can spin the wheel and happen to run gagging, blindfolding, spanking, slapping, and more.
+    """
+
+    possible_commands = ['gag', 'fullgag', 'blind', 'spank', 'slap']
+    chosen = random.choice(possible_commands)
+    m = await ctx.send(f'Spinning...')
+    await asyncio.sleep(1)
+    await m.edit(content=f'😱 {chosen.title()}!')
+
+    cmd = ctx.bot.get_command(chosen)
+
+    try:
+      print(await cmd.can_run(ctx))
+    except Exception as error:
+      em = discord.Embed(title=f'😭 I wanted to run {chosen}, but it\'s just that...', description=str(error.args[0]),
+                         color=discord.Color.dark_red())
+      return await ctx.send(embed=em)
+
+    ctx.is_part_of_wheel = True
+
+    await ctx.invoke(cmd, member=member)
+
   ##############################################################################
   #                                                                            #
   #                                                                            #
@@ -301,14 +361,33 @@ class Games(commands.Cog):
   #                                                                            #
   ##############################################################################
 
+  @bondageroulette.error
+  async def on_roulette_error(self, ctx, error):
+    if isinstance(error, commands.errors.CommandOnCooldown):
+      print(f'{error.retry_after=}')
+
+      embed = discord.Embed(title="Bondageroulette Cooldown is 1h",
+                            description="{} you need to wait {:,.1f} minutes to run it again.".format(
+                              ctx.author.mention, (error.retry_after // 60) + 1),
+                            color=0xFF2030)
+      return await ctx.send(embed=embed)
+
+    raise
+
   @ruin.error
   async def on_ruin_error(self, ctx, error):
+    if isinstance(error, commands.CheckFailure):
+      return
+
     if isinstance(error, commands.errors.CommandOnCooldown):
+      print(f'{error.retry_after=}')
+
       embed = discord.Embed(title="Ruin Cooldown is 1h",
                             description="{} you need to wait {:,.1f} minutes to ruin the game again.".format(
                               ctx.author.mention, (error.retry_after // 60) + 1),
                             color=0xFF2030)
-    await ctx.send(embed=embed)
+      return await ctx.send(embed=embed)
+    raise
 
   @worship.error
   async def on_worship_error(self, ctx, error):

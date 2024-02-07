@@ -2,7 +2,7 @@
 import random
 from random import randint, choice
 
-import database
+from utils import database
 import discord
 from discord.ext import commands
 from pornhub_api import PornhubApi
@@ -53,12 +53,13 @@ async def getporn_image(ctx, file):
 
 
 class Porn(commands.Cog):
+  """pornhub commands for yall 😏"""
   def __init__(self, bot):
     self.bot = bot
 
-  @commands.hybrid_command(aliases=['pornv'])
+  @commands.hybrid_command()
   @commands.guild_only()
-  async def pornvideo(self, ctx):
+  async def phv(self, ctx):
     """this command will send you a femdom porn suggestion.😏🤤"""
     if set(database.get_config('NSFW', ctx.guild.id)) & set(
         [str(role.id) for role in ctx.author.roles]) or database.get_config('NSFW', ctx.guild.id) == [0]:
@@ -76,11 +77,11 @@ class Porn(commands.Cog):
 
   @commands.hybrid_command()
   @commands.guild_only()
-  async def porn(self, ctx):
+  async def po(self, ctx):
     """this command will show you irl femdom Pics in server."""
     if set(database.get_config('NSFW', ctx.guild.id)) & set(
         [str(role.id) for role in ctx.author.roles]) or database.get_config('NSFW', ctx.guild.id) == [0]:
-      await getporn_image(ctx, 'Text_files/porn_image_list.txt')
+      await getporn_image(ctx, './assets/text/porn_image_list.txt')
     else:
       roles = '>'
       for r in database.get_config('NSFW', ctx.guild.id):
@@ -90,9 +91,9 @@ class Porn(commands.Cog):
         color=0xF2A2C0)
       await ctx.send(embed=embed)
 
-  @commands.hybrid_command(aliases=['ph'])
+  @commands.hybrid_command()
   @commands.guild_only()
-  async def pornhub(self, ctx, *, tag=None):
+  async def ph(self, ctx, *, tag=None):
     """this command will show you a porn suggestion in a category.😏🤤"""
     if set(database.get_config('NSFW', ctx.guild.id)) & set(
         [str(role.id) for role in ctx.author.roles]) or database.get_config('NSFW', ctx.guild.id) == [0]:

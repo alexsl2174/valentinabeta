@@ -3,7 +3,7 @@ import asyncio
 import random
 import sqlite3
 
-import database
+from utils import database
 import discord
 from discord import ButtonStyle
 from discord.ext import commands
@@ -88,6 +88,7 @@ class RpsView(discord.ui.View):
 
 
 class Gambling(commands.Cog):
+  """gamble to earn some coins"""
   def __init__(self, bot):
     self.bot = bot
 

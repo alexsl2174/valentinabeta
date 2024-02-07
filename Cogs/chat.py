@@ -5,7 +5,7 @@ by using API from personalityforge bot can talk like it does, for documentation 
 import configparser
 from random import choice
 
-import database
+from utils import database
 import discord
 import requests
 from discord.ext import commands
@@ -15,6 +15,9 @@ config.read('config.ini')
 
 
 class Chat(commands.Cog):
+  """
+  personalityforge in your server, use by starting a message with ".."
+  """
   def __init__(self, bot):
     self.bot = bot
     self.botID = 106996  # NSFW Annabelle Lee = 106996, Laurel Sweet = 71367 Lil Neko = 148149 SFW Cyber Ty = 63906, prob = 23958,
@@ -46,6 +49,7 @@ class Chat(commands.Cog):
           else:
             gender = 'm'
 
+          _c = message.channel
           message = message.content[2:]
 
           params = {
@@ -69,7 +73,7 @@ class Chat(commands.Cog):
             NSFW_reply = ['*ignoring*', 'Go watch porn pervert.', 'I am not a Pervert like you',
                           'I am not a pathetic slut like you.', ]
             message_data = choice(NSFW_reply)
-          await message.channel.send(message_data)
+          await _c .send(message_data)
           # else:
           # kuro_usagi = self.bot.get_user(104373103802466304)
           # await kuro_usagi.send(f"`{data}`")
