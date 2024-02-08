@@ -89,6 +89,7 @@ class MissValentina(commands.Bot):
     self.activity = discord.Activity(type=discord.ActivityType.listening, name="/chat | /help")
 
     self.blinded_users = {}
+    self.glitter_ruiners = {}
 
     self.prison_roles = {}
 
@@ -140,7 +141,7 @@ class MissValentina(commands.Bot):
         print(f'deleted {channel_id} for archiving')
         channel_maybe = self.get_channel(int(channel_id))
 
-        if channel_mayb is not None:
+        if channel_maybe is not None:
           await channel_maybe.delete()
 
         del self.groupchat_personas[channel_id]
@@ -166,6 +167,9 @@ class MissValentina(commands.Bot):
 
   async def on_app_command_completion(self, it: discord.Interaction, command):
     """On app command completion, use this to increase command usage"""
+
+
+
     self.update_bot_stats('guilds', it.guild_id)
     self.update_bot_stats('users', it.user.id)
     # print('added to count', self.command_uses)
@@ -175,6 +179,11 @@ class MissValentina(commands.Bot):
     if self.command_uses['users'][str(it.user.id)] % 20 == 0 and (now - self.last_ad.get(it.user.id, 0)) > 900:
       # obviously dont send ads to the owner :p
       if it.user.id == self.owner_id or it.user.id in DONATORS:
+        return
+
+      # is it a chat command and is private? if so, don't send ad
+      # because then the chat response wont be ephemeral (discord) /shrug
+      if command.name == 'chat' and it.user.id in self.privates:
         return
 
       # send ad!
@@ -188,7 +197,7 @@ class MissValentina(commands.Bot):
       em.set_thumbnail(url=self.user.display_avatar.url)
       em.add_field(name='Donate Here:', value='https://ko-fi.com/kyrian')
 
-      await it.followup.send(embed=em)
+      await it.followup.send(embed=em, ephemeral=True)
       self.last_ad[it.user.id] = now
 
   def get_chatbot_model(self, prompt=None) -> Union[Chatbot]:

@@ -1,4 +1,5 @@
 from utils import database
+from discord.ext import commands
 
 def roleplay_role(member):
   domme = database.get_config('domme', member.guild.id)[0]
@@ -8,6 +9,19 @@ def roleplay_role(member):
   member_has_role = lambda rid: str(rid) in [str(role.id) for role in member.roles]
 
   return 'domme' if member_has_role(domme) else 'sub' if member_has_role(sub) else 'switch' if member_has_role(switch) else None
+
+def sub_only():
+  def predicate(ctx):
+    return roleplay_role(ctx.author) in ['sub', 'switch']
+
+  return commands.check(predicate)
+
+def domme_only():
+  def predicate(ctx):
+    return roleplay_role(ctx.author) in ['domme', 'switch']
+
+  return commands.check(predicate)
+
 
 def who_is(author, member):
   """
