@@ -127,9 +127,9 @@ class Games(commands.Cog):
     m = await channel.send('69')
     await m.add_reaction('<:coin:1178687013583585343>')
     embed = discord.Embed(title='Counting',
-                          description=f"{channel.mention} is the counting channel.\n**How to earn more pinkcoins <:coin:1178687013583585343>**"
-                                      f"\n> Counting earns pinkcoins <:coin:1178687013583585343>\n> Dommes can ruin by **`/ruin`** the game and earn pinkcoins <:coin:1178687013583585343>"
-                                      f"\n> Guessing the correct number after ruing also gives pinkcoins <:coin:1178687013583585343>",
+                          description=f"{channel.mention} is the counting channel.\n**How to earn more coins <:coin:1178687013583585343>**"
+                                      f"\n> Counting earns coins <:coin:1178687013583585343>\n> Dommes can ruin by **`/ruin`** the game and earn coins <:coin:1178687013583585343>"
+                                      f"\n> Guessing the correct number after ruing also gives coins <:coin:1178687013583585343>",
                           color=0xF2A2C0)
     embed.set_thumbnail(url=self.bot.user.display_avatar.url)
     await ctx.send(embed=embed)
@@ -138,7 +138,7 @@ class Games(commands.Cog):
   @commands.guild_only()
   @commands.dynamic_cooldown(custom_ruin_cooldown, commands.BucketType.user)
   async def ruin(self, ctx):
-    """Counting earns pinkcoins, Dommes can ruin the game by running this. they will earn pinkcoins."""
+    """Counting earns coins, Dommes can ruin the game by running this. they will earn coins."""
     if ctx.author.bot:
       return
 
@@ -333,7 +333,7 @@ class Games(commands.Cog):
     Subs can spin the wheel and happen to run gagging, blindfolding, spanking, slapping, and more.
     """
 
-    possible_commands = ['gag', 'fullgag', 'blind', 'spank', 'slap']
+    possible_commands = ['gag', 'fullgag', 'spank', 'slap', 'chastity', 'emoji', 'badword', 'muffs']
     chosen = random.choice(possible_commands)
     m = await ctx.send(f'Spinning...')
     await asyncio.sleep(1)
